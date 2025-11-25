@@ -3,8 +3,8 @@ const { GifCodec, GifFrame } = require('gifwrap');
 const fs = require('fs');
 const path = require('path');
 
-const CANVAS_WIDTH = 640;
-const CANVAS_HEIGHT = 240;
+const CANVAS_WIDTH = 600;
+const CANVAS_HEIGHT = 220;
 const PADDING = 24;
 const DEFAULT_BUCKET_SECONDS = 60;
 const DEFAULT_CACHE_HEADER = null; // auto-generated if not provided
@@ -119,7 +119,12 @@ async function renderCountdownImage({
 }) {
   const diff = targetDate.getTime() - (now ?? Date.now());
   const parts = breakdownDuration(diff);
-  const display = `${parts.days}d ${pad(parts.hours)}h ${pad(parts.minutes)}m ${pad(parts.seconds)}s`;
+  const segments = [
+    { value: `${parts.days}`, unit: 'days' },
+    { value: pad(parts.hours), unit: 'hours' },
+    { value: pad(parts.minutes), unit: 'minutes' },
+    { value: pad(parts.seconds), unit: 'seconds' },
+  ];
 
   const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
   const ctx = canvas.getContext('2d');
@@ -136,24 +141,46 @@ async function renderCountdownImage({
   // measurements
   const spacingLabelValue = 32;
   const spacingValueSub = 24;
+  const spacingValueUnit = 8;
+  const segmentSpacing = 24;
   const accentHeight = 6;
 
-  // label
   ctx.fillStyle = textColor || DEFAULT_TEXT_COLOR;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.font = `32px ${labelFamily}, serif`;
+
+  // label metrics
+  ctx.font = `24px ${labelFamily}, serif`;
   const labelMetrics = ctx.measureText(label);
-  const labelHeight = (labelMetrics.actualBoundingBoxAscent || 32) + (labelMetrics.actualBoundingBoxDescent || 0);
+  const labelHeight = (labelMetrics.actualBoundingBoxAscent || 24) + (labelMetrics.actualBoundingBoxDescent || 0);
 
-  // value
-  ctx.font = `64px ${valueFamily}, sans-serif`;
-  ctx.fillStyle = textColor || DEFAULT_TEXT_COLOR;
-  ctx.textBaseline = 'top';
-  const valueMetrics = ctx.measureText(display);
-  const valueHeight = (valueMetrics.actualBoundingBoxAscent || 64) + (valueMetrics.actualBoundingBoxDescent || 0);
+  // segment metrics
+  let totalSegmentsWidth = 0;
+  const segmentHeights = [];
+  const segmentWidths = [];
 
-  // sub-label
+  segments.forEach((seg, idx) => {
+    ctx.font = `48px ${valueFamily}, sans-serif`;
+    const valMetrics = ctx.measureText(seg.value);
+    const valHeight = (valMetrics.actualBoundingBoxAscent || 48) + (valMetrics.actualBoundingBoxDescent || 0);
+    const valWidth = valMetrics.width;
+
+    ctx.font = `14px ${valueFamily}, sans-serif`;
+    const unitMetrics = ctx.measureText(seg.unit);
+    const unitHeight = (unitMetrics.actualBoundingBoxAscent || 14) + (unitMetrics.actualBoundingBoxDescent || 0);
+    const unitWidth = unitMetrics.width;
+
+    const segmentWidth = Math.max(valWidth, unitWidth);
+    const segmentHeight = valHeight + spacingValueUnit + unitHeight;
+
+    segmentWidths[idx] = segmentWidth;
+    segmentHeights[idx] = segmentHeight;
+    totalSegmentsWidth += segmentWidth;
+  });
+
+  totalSegmentsWidth += segmentSpacing * (segments.length - 1);
+
+  // sub-label metrics
   let subHeight = 0;
   if (subLabel) {
     ctx.font = `20px ${valueFamily}, sans-serif`;
@@ -161,28 +188,46 @@ async function renderCountdownImage({
     subHeight = (subMetrics.actualBoundingBoxAscent || 20) + (subMetrics.actualBoundingBoxDescent || 0);
   }
 
+  const maxSegmentHeight = Math.max(...segmentHeights);
   const totalHeight =
     labelHeight +
     spacingLabelValue +
-    valueHeight +
+    maxSegmentHeight +
     (subLabel ? spacingValueSub + subHeight : 0);
 
   const startY = Math.max(PADDING, (CANVAS_HEIGHT - accentHeight - totalHeight) / 2);
 
   // draw label
-  ctx.font = `32px ${labelFamily}, serif`;
+  ctx.font = `24px ${labelFamily}, serif`;
   ctx.textBaseline = 'top';
   ctx.fillText(label, CANVAS_WIDTH / 2, startY);
 
-  // draw value
-  ctx.font = `64px ${valueFamily}, sans-serif`;
+  // draw segments
   const valueY = startY + labelHeight + spacingLabelValue;
-  ctx.fillText(display, CANVAS_WIDTH / 2, valueY);
+  let currentX = (CANVAS_WIDTH - totalSegmentsWidth) / 2;
+  segments.forEach((seg, idx) => {
+  ctx.font = `48px ${valueFamily}, sans-serif`;
+    const valMetrics = ctx.measureText(seg.value);
+    const valHeight = (valMetrics.actualBoundingBoxAscent || 64) + (valMetrics.actualBoundingBoxDescent || 0);
+    const valWidth = valMetrics.width;
+    const valX = currentX + (segmentWidths[idx] - valWidth) / 2;
+    ctx.fillText(seg.value, valX + valWidth / 2, valueY); // center via computed x
 
-  // draw sub-label if present
+    ctx.font = `18px ${valueFamily}, sans-serif`;
+    const unitMetrics = ctx.measureText(seg.unit);
+    const unitHeight = (unitMetrics.actualBoundingBoxAscent || 18) + (unitMetrics.actualBoundingBoxDescent || 0);
+    const unitWidth = unitMetrics.width;
+    const unitY = valueY + valHeight + spacingValueUnit;
+    const unitX = currentX + (segmentWidths[idx] - unitWidth) / 2;
+    ctx.fillText(seg.unit, unitX + unitWidth / 2, unitY);
+
+    currentX += segmentWidths[idx] + segmentSpacing;
+  });
+
+  // draw sub-label if present (below segments with extra breathing room)
   if (subLabel) {
-    ctx.font = `20px ${valueFamily}, sans-serif`;
-    const subY = valueY + valueHeight + spacingValueSub;
+    ctx.font = `16px ${labelFamily}, serif`;
+    const subY = valueY + maxSegmentHeight + spacingValueSub + 4;
     ctx.fillText(subLabel, CANVAS_WIDTH / 2, subY);
   }
 
