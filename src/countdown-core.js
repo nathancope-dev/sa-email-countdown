@@ -226,7 +226,7 @@ async function renderCountdownImage({
 
   // draw sub-label if present (below segments with extra breathing room)
   if (subLabel) {
-    ctx.font = `16px ${labelFamily}, serif`;
+    ctx.font = `16px ${valueFamily}, sans`;
     const subY = valueY + maxSegmentHeight + spacingValueSub + 4;
     ctx.fillText(subLabel, CANVAS_WIDTH / 2, subY);
   }
