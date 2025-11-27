@@ -1,11 +1,10 @@
 const { createCanvas, GlobalFonts } = require('@napi-rs/canvas');
-const { GifCodec, GifFrame, GifUtil, Gif } = require('gifwrap');
+const { GifCodec, GifFrame } = require('gifwrap');
 const fs = require('fs');
 const path = require('path');
 
 const CANVAS_WIDTH = 600;
 const CANVAS_HEIGHT = 220;
-const RENDER_SCALE = 2; // render at 2x for crisper downscaled output
 const PADDING = 24;
 const DEFAULT_BUCKET_SECONDS = 60;
 const DEFAULT_CACHE_HEADER = null; // auto-generated if not provided
@@ -14,24 +13,18 @@ const DEFAULT_GIF_DELAY_CS = null; // auto-spread across bucket by default
 const DEFAULT_ACCENT_COLOR = '#22d3ee';
 const DEFAULT_BG_COLOR = '#0f172a';
 const DEFAULT_TEXT_COLOR = '#ffffff';
-const MAX_GIF_COLORS = 256; // GIF palette limit
-const FONT_SIZE_LABEL = 26;
-const FONT_SIZE_VALUE = 56;
-const FONT_SIZE_UNIT = 20;
-const FONT_SIZE_SUB = 18;
 
 const gifCodec = new GifCodec();
 
 let fontsRegistered = false;
-let labelFamily = 'Gill Sans Regular';
-let valueFamily = 'Gill Sans Regular';
+let labelFamily = 'GillSans Regular';
+let valueFamily = 'GillSans Regular';
 
 function registerFonts() {
   if (fontsRegistered) return;
 
   const candidates = [
-    { family: 'Gill Sans Regular', file: path.join(__dirname, 'fonts/GillSans Regular.ttf') },
-    { family: 'Gill Sans Regular', file: path.join(__dirname, 'fonts/GillSans Regular.ttf') },
+    { family: 'GillSans Regular', file: path.join(__dirname, 'fonts/GillSans Regular.ttf') },
   ];
 
   for (const font of candidates) {
@@ -104,7 +97,7 @@ function breakdownDuration(diffMs) {
   return { days, hours, minutes, seconds };
 }
 
-const VALUE_WIDTH_SAMPLE = {
+const VALUE_HEIGHT_SAMPLE = {
   days: '888',
   hours: '88',
   minutes: '88',
@@ -122,15 +115,14 @@ function wantsAnimation(query) {
 }
 
 async function renderCountdownImage({
-  targetDate,
-  label,
-  subLabel,
-  accentColor,
-  backgroundColor,
-  textColor,
-  now,
-  renderScale = RENDER_SCALE,
-}) {
+                                      targetDate,
+                                      label,
+                                      subLabel,
+                                      accentColor,
+                                      backgroundColor,
+                                      textColor,
+                                      now,
+                                    }) {
   const diff = targetDate.getTime() - (now ?? Date.now());
   const parts = breakdownDuration(diff);
   const segments = [
@@ -140,9 +132,8 @@ async function renderCountdownImage({
     { value: pad(parts.seconds), unit: 'seconds' },
   ];
 
-  const canvas = createCanvas(CANVAS_WIDTH * renderScale, CANVAS_HEIGHT * renderScale);
+  const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
   const ctx = canvas.getContext('2d');
-  ctx.scale(renderScale, renderScale);
   registerFonts();
 
   // background
@@ -165,10 +156,9 @@ async function renderCountdownImage({
   ctx.textBaseline = 'top';
 
   // label metrics
-  ctx.font = `${FONT_SIZE_LABEL}px ${labelFamily}, serif`;
+  ctx.font = `24px ${labelFamily}, serif`;
   const labelMetrics = ctx.measureText(label);
-  const labelHeight =
-    (labelMetrics.actualBoundingBoxAscent || FONT_SIZE_LABEL) + (labelMetrics.actualBoundingBoxDescent || 0);
+  const labelHeight = (labelMetrics.actualBoundingBoxAscent || 24) + (labelMetrics.actualBoundingBoxDescent || 0);
 
   // segment metrics
   let totalSegmentsWidth = 0;
@@ -177,17 +167,16 @@ async function renderCountdownImage({
   const valueHeights = [];
 
   segments.forEach((seg, idx) => {
-    const valueSample = VALUE_WIDTH_SAMPLE[seg.unit] || seg.value;
-    ctx.font = `${FONT_SIZE_VALUE}px ${valueFamily}, sans-serif`;
-    const valMetrics = ctx.measureText(valueSample);
-    const valHeight =
-      (valMetrics.actualBoundingBoxAscent || FONT_SIZE_VALUE) + (valMetrics.actualBoundingBoxDescent || 0);
+    const valueSample = VALUE_HEIGHT_SAMPLE[seg.unit] || seg.value;
+    ctx.font = `48px ${valueFamily}, sans-serif`;
+    const sampleMetrics = ctx.measureText(valueSample);
+    const valHeight = (sampleMetrics.actualBoundingBoxAscent || 48) + (sampleMetrics.actualBoundingBoxDescent || 0);
+    const valMetrics = ctx.measureText(seg.value);
     const valWidth = valMetrics.width;
 
-    ctx.font = `${FONT_SIZE_UNIT}px ${valueFamily}, sans-serif`;
+    ctx.font = `14px ${valueFamily}, sans-serif`;
     const unitMetrics = ctx.measureText(seg.unit);
-    const unitHeight =
-      (unitMetrics.actualBoundingBoxAscent || FONT_SIZE_UNIT) + (unitMetrics.actualBoundingBoxDescent || 0);
+    const unitHeight = (unitMetrics.actualBoundingBoxAscent || 14) + (unitMetrics.actualBoundingBoxDescent || 0);
     const unitWidth = unitMetrics.width;
 
     const segmentWidth = Math.max(valWidth, unitWidth);
@@ -204,23 +193,22 @@ async function renderCountdownImage({
   // sub-label metrics
   let subHeight = 0;
   if (subLabel) {
-    ctx.font = `${FONT_SIZE_SUB}px ${valueFamily}, sans-serif`;
+    ctx.font = `20px ${valueFamily}, sans-serif`;
     const subMetrics = ctx.measureText(subLabel);
-    subHeight =
-      (subMetrics.actualBoundingBoxAscent || FONT_SIZE_SUB) + (subMetrics.actualBoundingBoxDescent || 0);
+    subHeight = (subMetrics.actualBoundingBoxAscent || 20) + (subMetrics.actualBoundingBoxDescent || 0);
   }
 
   const maxSegmentHeight = Math.max(...segmentHeights);
   const totalHeight =
-    labelHeight +
-    spacingLabelValue +
-    maxSegmentHeight +
-    (subLabel ? spacingValueSub + subHeight : 0);
+      labelHeight +
+      spacingLabelValue +
+      maxSegmentHeight +
+      (subLabel ? spacingValueSub + subHeight : 0);
 
   const startY = Math.max(PADDING, (CANVAS_HEIGHT - accentHeight - totalHeight) / 2);
 
   // draw label
-  ctx.font = `${FONT_SIZE_LABEL}px ${labelFamily}, serif`;
+  ctx.font = `24px ${labelFamily}, serif`;
   ctx.textBaseline = 'top';
   ctx.fillText(label, CANVAS_WIDTH / 2, startY);
 
@@ -228,14 +216,14 @@ async function renderCountdownImage({
   const valueY = startY + labelHeight + spacingLabelValue;
   let currentX = (CANVAS_WIDTH - totalSegmentsWidth) / 2;
   segments.forEach((seg, idx) => {
-  ctx.font = `${FONT_SIZE_VALUE}px ${valueFamily}, sans-serif`;
+    ctx.font = `48px ${valueFamily}, sans-serif`;
     const valMetrics = ctx.measureText(seg.value);
     const valHeight = valueHeights[idx];
     const valWidth = valMetrics.width;
     const valX = currentX + (segmentWidths[idx] - valWidth) / 2;
     ctx.fillText(seg.value, valX + valWidth / 2, valueY); // center via computed x
 
-    ctx.font = `${FONT_SIZE_UNIT}px ${valueFamily}, sans-serif`;
+    ctx.font = `18px ${valueFamily}, sans-serif`;
     const unitMetrics = ctx.measureText(seg.unit);
     const unitHeight = (unitMetrics.actualBoundingBoxAscent || 18) + (unitMetrics.actualBoundingBoxDescent || 0);
     const unitWidth = unitMetrics.width;
@@ -248,7 +236,8 @@ async function renderCountdownImage({
 
   // draw sub-label if present (below segments with extra breathing room)
   if (subLabel) {
-    ctx.font = `${FONT_SIZE_SUB}px ${valueFamily}, sans`;
+    ctx.font = `16px ${labelFamily}, serif`;
+    ctx.font = `16px ${valueFamily}, sans`;
     const subY = valueY + maxSegmentHeight + spacingValueSub + 4;
     ctx.fillText(subLabel, CANVAS_WIDTH / 2, subY);
   }
@@ -256,54 +245,26 @@ async function renderCountdownImage({
   return canvas;
 }
 
-function downscaleCanvas(sourceCanvas) {
-  const output = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
-  const ctx = output.getContext('2d');
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(sourceCanvas, 0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-  return output;
-}
-
-async function buildCountdownPng({
-  targetDate,
-  label,
-  subLabel,
-  accentColor,
-  backgroundColor,
-  textColor,
-  now,
-}) {
-  const canvas = await renderCountdownImage({
-    targetDate,
-    label,
-    subLabel,
-    accentColor,
-    backgroundColor,
-    textColor,
-    now,
-    renderScale: RENDER_SCALE,
-  });
-
-  const downscaled = downscaleCanvas(canvas);
-  return downscaled.toBuffer('image/png');
+async function buildCountdownPng({ targetDate, label, accentColor, backgroundColor, now }) {
+  const canvas = await renderCountdownImage({ targetDate, label, accentColor, backgroundColor, now });
+  return canvas.toBuffer('image/png');
 }
 
 async function buildCountdownGif({
-  targetDate,
-  label,
-  subLabel,
-  accentColor,
-  backgroundColor,
-  textColor,
-  now,
-  frameCount = DEFAULT_GIF_FRAMES,
-  delayCentisecs,
-  bucketSeconds = DEFAULT_BUCKET_SECONDS,
-}) {
+                                   targetDate,
+                                   label,
+                                   subLabel,
+                                   accentColor,
+                                   backgroundColor,
+                                   textColor,
+                                   now,
+                                   frameCount = DEFAULT_GIF_FRAMES,
+                                   delayCentisecs,
+                                   bucketSeconds = DEFAULT_BUCKET_SECONDS,
+                                 }) {
   const effectiveDelayCs =
-    delayCentisecs ??
-    Math.max(1, Math.round((Math.max(1, bucketSeconds) * 100) / Math.max(1, frameCount)));
+      delayCentisecs ??
+      Math.max(1, Math.round((Math.max(1, bucketSeconds) * 100) / Math.max(1, frameCount)));
   const frames = [];
   for (let i = 0; i < frameCount; i += 1) {
     const frameNow = (now ?? Date.now()) + i * (effectiveDelayCs * 10);
@@ -315,26 +276,13 @@ async function buildCountdownGif({
       backgroundColor,
       textColor,
       now: frameNow,
-      renderScale: RENDER_SCALE,
     });
-    const downscaled = downscaleCanvas(canvas);
-    const ctx = downscaled.getContext('2d');
+    const ctx = canvas.getContext('2d');
     const { data } = ctx.getImageData(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
     frames.push(new GifFrame(CANVAS_WIDTH, CANVAS_HEIGHT, Buffer.from(data), { delayCentisecs: effectiveDelayCs }));
   }
 
-  // Quantize across all frames with dithering so the encoder works with a
-  // consistent palette and avoids banding in gradients/text edges.
-  GifUtil.quantizeSorokin(frames, MAX_GIF_COLORS, 'min-pop', {
-    ditherAlgorithm: 'FloydSteinberg',
-    minimumColorDistanceToDither: 2,
-    serpentine: true,
-  });
-
-  const { buffer } = await gifCodec.encodeGif(frames, {
-    loops: 0, // loop within bucketed clip
-    colorScope: Gif.GlobalColorsPreferred,
-  });
+  const { buffer } = await gifCodec.encodeGif(frames, { loops: 0 }); // loop within bucketed clip
   return buffer;
 }
 
@@ -369,13 +317,13 @@ async function buildCountdownResponse(query, overrides = {}) {
   const useGif = wantsGif && allowGif;
 
   const computedCacheHeader =
-    cacheHeader ||
-    `public, max-age=0, s-maxage=${Math.max(1, bucketSeconds)}, stale-while-revalidate=30`;
+      cacheHeader ||
+      `public, max-age=0, s-maxage=${Math.max(1, bucketSeconds)}, stale-while-revalidate=30`;
 
   const nowForRender = bucketedNow;
 
   const buffer = useGif
-    ? await buildCountdownGif({
+      ? await buildCountdownGif({
         targetDate,
         label,
         subLabel,
@@ -387,7 +335,7 @@ async function buildCountdownResponse(query, overrides = {}) {
         delayCentisecs: gifDelayCs,
         bucketSeconds,
       })
-    : await buildCountdownPng({
+      : await buildCountdownPng({
         targetDate,
         label,
         subLabel,
